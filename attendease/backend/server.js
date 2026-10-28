@@ -525,6 +525,111 @@ app.post("/api/students/register", async (req, res) => {
   }
 });
 const attendanceRoutes = require("./attendanceRoutes");
+// Mark student attendance using college location
+app.post("/api/student/attendance/mark", async (req, res) => {
+  try {
+    const { student_id, latitude, longitude } = req.body;
+
+    const COLLEGE_LAT = 12.754383872187988;
+    const COLLEGE_LON = 77.82868321013642;
+    const ALLOWED_RADIUS = 150; // metres
+
+    if (
+      !student_id ||
+      latitude == null ||
+      longitude == null ||
+      !Number.isFinite(Number(latitude)) ||
+      !Number.isFinite(Number(longitude)) ||
+      Number(latitude) < -90 ||
+      Number(latitude) > 90 ||
+      Number(longitude) < -180 ||
+      Number(longitude) > 180
+    ) {
+      return res.status(400).json({
+        message: "Valid student ID and location are required.",
+      });
+    }
+
+    // Calculate distance between the student and college
+    const toRadians = (degrees) => (degrees * Math.PI) / 180;
+    const earthRadius = 6371000;
+
+    const lat1 = toRadians(COLLEGE_LAT);
+    const lat2 = toRadians(Number(latitude));
+    const deltaLat = toRadians(Number(latitude) - COLLEGE_LAT);
+    const deltaLon = toRadians(Number(longitude) - COLLEGE_LON);
+
+    const a =
+      Math.sin(deltaLat / 2) ** 2 +
+      Math.cos(lat1) *
+        Math.cos(lat2) *
+        Math.sin(deltaLon / 2) ** 2;
+
+    const distance =
+      2 * earthRadius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    if (distance > ALLOWED_RADIUS) {
+      return res.status(403).json({
+        message: "You must be within the college attendance area.",
+        distance: Math.round(distance),
+      });
+    }
+
+    // Use India's local date on the server
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    const day = new Date(`${today}T12:00:00+05:30`).getDay();
+
+    if (day === 0) {
+      return res.status(403).json({
+        message: "Attendance cannot be marked on Sundays.",
+      });
+    }
+
+    // Confirm this is an existing student
+    const student = await db.query(
+      "SELECT user_id FROM users WHERE user_id = $1 AND role = 'student'",
+      [student_id]
+    );
+
+    if (student.rowCount === 0) {
+      return res.status(404).json({
+        message: "Student account not found.",
+      });
+    }
+
+    // Existing unique constraint prevents duplicate daily attendance
+    const result = await db.query(
+      `INSERT INTO attendance (student_id, attendance_date, status)
+       VALUES ($1, $2, 'present')
+       ON CONFLICT (student_id, attendance_date) DO NOTHING
+       RETURNING attendance_id, student_id, attendance_date, check_in_time, status`,
+      [student_id, today]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(409).json({
+        message: "You have already marked attendance today.",
+      });
+    }
+
+    return res.status(201).json({
+      message: "Attendance marked successfully!",
+      attendance: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Mark attendance error:", error);
+
+    return res.status(500).json({
+      message: "Unable to mark attendance. Please try again.",
+    });
+  }
+});
 app.use("/api/attendance", attendanceRoutes);
 // --------------------------------------------------
 // Start server
