@@ -1,6 +1,7 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+
 
 const COLLEGE_LOCATION = {
   latitude: 12.754383872187988,
@@ -36,6 +37,46 @@ function getLocalDate() {
 }
 
 export default function StudentAttendance() {
+  const [holiday, setHoliday] = useState(null);
+const [holidayChecked, setHolidayChecked] = useState(false);
+const [holidayError, setHolidayError] = useState(false);
+
+useEffect(() => {
+  let cancelled = false;
+
+  async function checkPublicHoliday() {
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public-holiday/today`
+      );
+
+      if (!response.ok) {
+        throw new Error("Holiday check failed");
+      }
+
+      const data = await response.json();
+
+      if (!cancelled) {
+        setHoliday(data.isHoliday ? data.holiday : null);
+        setHolidayError(false);
+      }
+    } catch {
+      if (!cancelled) {
+        setHolidayError(true);
+      }
+    } finally {
+      if (!cancelled) {
+        setHolidayChecked(true);
+      }
+    }
+  }
+
+  checkPublicHoliday();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
   const [distance, setDistance] = useState(null);
@@ -219,11 +260,14 @@ export default function StudentAttendance() {
     }
   };
 
-  const canMark =
-    status === "verified" &&
-    !isSunday &&
-    !saving &&
-    markedDate !== today;
+ const canMark =
+  holidayChecked &&
+  !holidayError &&
+  !holiday &&
+  status === "verified" &&
+  !isSunday &&
+  !saving &&
+  markedDate !== today;
 
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-8 text-slate-800 sm:px-6">
@@ -295,7 +339,40 @@ export default function StudentAttendance() {
                 eligible day.
               </div>
             )}
+{!holidayChecked && (
+  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+    Checking public holidays...
+  </div>
+)}
 
+{holidayError && (
+  <div
+    role="alert"
+    className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+  >
+    Unable to check public holidays. Please refresh the page before
+    marking attendance.
+  </div>
+)}
+
+{holidayChecked && holiday && (
+  <div
+    role="status"
+    className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900"
+  >
+    <h3 className="font-bold">
+      🎉 Public Holiday: {holiday.holiday_name}
+    </h3>
+
+    {holiday.description && (
+      <p className="mt-1 text-sm">{holiday.description}</p>
+    )}
+
+    <p className="mt-2 text-sm font-medium">
+      Attendance marking is disabled for today.
+    </p>
+  </div>
+)}
             <div className="rounded-xl border border-slate-200 p-5">
               <div className="flex items-start gap-3">
                 <div className="text-xl">
@@ -350,7 +427,14 @@ export default function StudentAttendance() {
               <button
                 type="button"
                 onClick={checkLocation}
-                disabled={status === "checking" || saving || isSunday}
+                disabled={
+  status === "checking" ||
+  saving ||
+  isSunday ||
+  !holidayChecked ||
+  holidayError ||
+  !!holiday
+}
                 className="mt-5 w-full rounded-xl border border-blue-200 bg-blue-50 px-5 py-3 font-semibold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {status === "checking"

@@ -104,7 +104,6 @@ export default function StudentDashboard() {
   { label: "✓  Mark Attendance", to: "/student-attendance" },
   { label: "♙  Student Profile Update", to: "/student-profile" },
   { label: "♙  My Profile", to: "/my-profile" },
-  { label: "⌖  Location", to: "/student#location" },
 ];
 
   return (

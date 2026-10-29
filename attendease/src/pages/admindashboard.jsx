@@ -15,6 +15,21 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [employees, setEmployees] = useState([]);
+  const [employeeLoading, setEmployeeLoading] = useState(true);
+  const [employeeError, setEmployeeError] = useState("");
+  const [showEmployeeForm, setShowEmployeeForm] = useState(false);
+  const [savingEmployee, setSavingEmployee] = useState(false);
+  const [employeeMessage, setEmployeeMessage] = useState("");
+
+  const [employeeForm, setEmployeeForm] = useState({
+    first_name: "",
+    last_name: "",
+    contact: "",
+    designation: "",
+    date_of_join: "",
+  });
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -64,6 +79,102 @@ export default function AdminDashboard() {
     return () => controller.abort();
   }, []);
 
+  async function fetchEmployees() {
+    try {
+      setEmployeeLoading(true);
+      setEmployeeError("");
+
+      const response = await fetch(
+        "http://localhost:5000/api/admin/employees"
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || "Unable to load employees."
+        );
+      }
+
+      setEmployees(
+        Array.isArray(result.employees) ? result.employees : []
+      );
+    } catch (err) {
+      setEmployeeError(
+        err.message || "Unable to connect to the backend."
+      );
+    } finally {
+      setEmployeeLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
+  function handleEmployeeChange(e) {
+    const { name, value } = e.target;
+
+    setEmployeeForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  }
+
+  async function handleAddEmployee(e) {
+    e.preventDefault();
+
+    try {
+      setSavingEmployee(true);
+      setEmployeeMessage("");
+      setEmployeeError("");
+
+      const response = await fetch(
+        "http://localhost:5000/api/admin/employees",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...employeeForm,
+            date_of_join: employeeForm.date_of_join || null,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || "Unable to add employee."
+        );
+      }
+
+      setEmployees((previous) => [
+        result.employee,
+        ...previous,
+      ]);
+
+      setEmployeeForm({
+        first_name: "",
+        last_name: "",
+        contact: "",
+        designation: "",
+        date_of_join: "",
+      });
+
+      setShowEmployeeForm(false);
+      setEmployeeMessage("Employee added successfully!");
+    } catch (err) {
+      setEmployeeMessage(
+        err.message || "Unable to save employee details."
+      );
+    } finally {
+      setSavingEmployee(false);
+    }
+  }
+
   function handleLogout() {
     localStorage.removeItem("user");
     navigate("/");
@@ -101,12 +212,17 @@ export default function AdminDashboard() {
   ];
 
   const menuItems = [
-    { label: "▦  Dashboard", to: "/admin", active: true },
-    { label: "✓  Mark Attendance", to: "/attendance" },
-    { label: "♙  Student Profile Update", to: "/student-profile" },
-    { label: "♙  Employee Profile Update", to: "/employees" },
-    { label: "▤  Reports", to: "/reports" },
-  ];
+  { label: "▦  Dashboard", to: "/admin", active: true },
+  { label: "✓  Mark Attendance", to: "/attendance" },
+
+  { label: "♙  Student Profile Update", to: "/student-profile" },
+  { label: "▤  Student Details", to: "/student-details" },
+
+  { label: "♙  Employee Profile Update", to: "/employees" },
+  { label: "▤  Employee Details", to: "/employee-details" },
+
+  { label: "▤  Reports", to: "/reports" },
+];
 
   function formatDate(date) {
     if (!date) return "—";
@@ -296,6 +412,199 @@ export default function AdminDashboard() {
                         <span className={`inline-block rounded-full px-3 py-1 text-[11px] font-bold capitalize ${statusStyle(record.status)}`}>
                           {record.status || "Unknown"}
                         </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Employee Details */}
+        <section className="mb-[30px] rounded-[14px] border border-[#e2e8f0] bg-white p-[24px] shadow-sm max-sm:p-3">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[19px] font-bold text-[#111827]">
+                Employee Details
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Manage employee records without login accounts.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setEmployeeMessage("");
+                setShowEmployeeForm((previous) => !previous);
+              }}
+              className="rounded-[8px] bg-[#2875c7] px-4 py-3 text-[13px] text-white transition hover:bg-[#1d5fa8]"
+            >
+              {showEmployeeForm ? "Cancel" : "+ Add New Employee"}
+            </button>
+          </div>
+
+          {employeeMessage && (
+            <p className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+              {employeeMessage}
+            </p>
+          )}
+
+          {showEmployeeForm && (
+            <form
+              onSubmit={handleAddEmployee}
+              className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4"
+            >
+              <h3 className="mb-4 font-semibold text-slate-800">
+                Add Employee
+              </h3>
+
+              <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                <input
+                  name="first_name"
+                  value={employeeForm.first_name}
+                  onChange={handleEmployeeChange}
+                  placeholder="First name *"
+                  required
+                  className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm outline-none focus:border-blue-500"
+                />
+
+                <input
+                  name="last_name"
+                  value={employeeForm.last_name}
+                  onChange={handleEmployeeChange}
+                  placeholder="Last name"
+                  className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm outline-none focus:border-blue-500"
+                />
+
+                <input
+                  name="contact"
+                  value={employeeForm.contact}
+                  onChange={handleEmployeeChange}
+                  placeholder="Contact number"
+                  maxLength={15}
+                  className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm outline-none focus:border-blue-500"
+                />
+
+                <input
+                  name="designation"
+                  value={employeeForm.designation}
+                  onChange={handleEmployeeChange}
+                  placeholder="Designation *"
+                  required
+                  className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm outline-none focus:border-blue-500"
+                />
+
+                <div>
+                  <label className="mb-1 block text-xs text-slate-600">
+                    Date of joining
+                  </label>
+                  <input
+                    type="date"
+                    name="date_of_join"
+                    value={employeeForm.date_of_join}
+                    onChange={handleEmployeeChange}
+                    className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingEmployee}
+                className="mt-4 rounded-lg bg-green-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingEmployee ? "Saving..." : "Save Employee"}
+              </button>
+            </form>
+          )}
+
+          {employeeError && (
+            <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              {employeeError}
+              <button
+                type="button"
+                onClick={fetchEmployees}
+                className="ml-3 font-semibold underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[700px] border-collapse text-left">
+              <thead>
+                <tr>
+                  {[
+                    "EMPLOYEE ID",
+                    "EMPLOYEE NAME",
+                    "CONTACT",
+                    "DESIGNATION",
+                    "DATE OF JOINING",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="bg-[#f8fafc] px-3 py-4 text-[11px] font-semibold text-[#374151]"
+                    >
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {employeeLoading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-8 text-center text-sm text-slate-500"
+                    >
+                      Loading employee details...
+                    </td>
+                  </tr>
+                ) : employeeError ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-8 text-center text-sm text-slate-500"
+                    >
+                      Employee details could not be loaded.
+                    </td>
+                  </tr>
+                ) : employees.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-8 text-center text-sm text-slate-500"
+                    >
+                      No employee records found.
+                    </td>
+                  </tr>
+                ) : (
+                  employees.map((employee) => (
+                    <tr key={employee.admin_id}>
+                      <td className="border-b border-slate-200 px-3 py-4 text-sm">
+                        {employee.admin_id}
+                      </td>
+
+                      <td className="border-b border-slate-200 px-3 py-4 text-sm font-medium">
+                        {[employee.first_name, employee.last_name]
+                          .filter(Boolean)
+                          .join(" ")}
+                      </td>
+
+                      <td className="border-b border-slate-200 px-3 py-4 text-sm">
+                        {employee.contact || "—"}
+                      </td>
+
+                      <td className="border-b border-slate-200 px-3 py-4 text-sm">
+                        {employee.designation}
+                      </td>
+
+                      <td className="border-b border-slate-200 px-3 py-4 text-sm">
+                        {formatDate(employee.date_of_join)}
                       </td>
                     </tr>
                   ))

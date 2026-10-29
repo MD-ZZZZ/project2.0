@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+
+const API = "http://localhost:5000/api";
 
 const emptyForm = {
   first_name: "",
   last_name: "",
   email: "",
+  password: "",
   contact: "",
   course: "",
   enrollment_date: "",
@@ -22,122 +25,306 @@ export default function StudentProfile() {
     }
   });
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role?.toLowerCase() === "admin";
+  const userId = user?.user_id;
 
   const [students, setStudents] = useState([]);
-  const [selectedStudentId, setSelectedStudentId] = useState(
-    isAdmin ? "" : String(user?.user_id ?? "")
-  );
+  const [selectedStudentId, setSelectedStudentId] = useState("");
   const [form, setForm] = useState(emptyForm);
-  const [loadingStudents, setLoadingStudents] = useState(false);
-  const [loadingProfile, setLoadingProfile] = useState(false);
-  const [message, setMessage] = useState("");
 
-  // Redirect if nobody is logged in.
+  // Admin starts in add mode. Students always edit their own profile.
+  const [mode, setMode] = useState(
+    isAdmin ? "add" : "edit"
+  );
+
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("success");
+
+  const showMessage = useCallback((text, type = "success") => {
+    setMessage(text);
+    setMessageType(type);
+  }, []);
+
+  // Redirect if the user is not logged in.
   useEffect(() => {
     if (!user) {
-      navigate("/");
+      navigate("/", { replace: true });
     }
   }, [user, navigate]);
 
-  // Load students for the admin dropdown.
-  useEffect(() => {
-    if (!isAdmin) return;
+  // Load existing students for the admin dropdown.
+  const loadStudents = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/students`);
+      const data = await response.json();
 
-    const loadStudents = async () => {
-      setLoadingStudents(true);
-      setMessage("");
-
-      try {
-        const response = await fetch(
-          "http://localhost:5000/api/students"
-        );
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message || "Unable to load students."
-          );
-        }
-
-        if (!Array.isArray(data)) {
-          throw new Error("The server returned an invalid student list.");
-        }
-
-        setStudents(data);
-
-        if (data.length === 0) {
-          setMessage("No students were found in the database.");
-        }
-      } catch (error) {
-        setMessage(error.message || "Unable to load students.");
-      } finally {
-        setLoadingStudents(false);
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to load students.");
       }
-    };
 
-    loadStudents();
-  }, [isAdmin]);
+      setStudents(Array.isArray(data) ? data : []);
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      showMessage(error.message || "Unable to load students.", "error");
+      return [];
+    }
+  }, [showMessage]);
 
-  // Load the selected student's profile.
   useEffect(() => {
-    if (!user || !selectedStudentId) {
+    if (user && isAdmin) {
+      loadStudents();
+    }
+  }, [user, isAdmin, loadStudents]);
+
+  // Load a student's existing profile.
+  useEffect(() => {
+    if (!user) return;
+
+    if (isAdmin && mode === "add") {
       setForm(emptyForm);
+      setLoading(false);
       return;
     }
 
-    const loadProfile = async () => {
-      setLoadingProfile(true);
+    const id = isAdmin
+      ? selectedStudentId
+      : String(userId ?? "");
+
+    if (!id) {
+      setForm(emptyForm);
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadProfile() {
+      setLoading(true);
       setMessage("");
 
       try {
         const response = await fetch(
-          `http://localhost:5000/api/student/profile/${selectedStudentId}`
+          `${API}/student/profile/${encodeURIComponent(id)}`,
+          { signal: controller.signal }
         );
+
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(
-            data.message || "Unable to load profile."
-          );
+          throw new Error(data.message || "Unable to load profile.");
         }
 
         setForm({
           first_name: data.first_name || "",
           last_name: data.last_name || "",
           email: data.email || "",
+          password: "",
           contact: data.contact || "",
           course: data.course || "",
           enrollment_date: data.enrollment_date
             ? String(data.enrollment_date).slice(0, 10)
             : "",
-          duration: data.duration ?? "",
+          duration:
+            data.duration == null ? "" : String(data.duration),
         });
       } catch (error) {
-        setForm(emptyForm);
-        setMessage(error.message || "Unable to connect to the backend.");
+        if (error.name !== "AbortError") {
+          showMessage(error.message || "Unable to load profile.", "error");
+        }
       } finally {
-        setLoadingProfile(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
-    };
+    }
 
     loadProfile();
-  }, [user, selectedStudentId]);
 
-  const handleChange = (e) => {
+    return () => controller.abort();
+  }, [
+    user,
+    userId,
+    isAdmin,
+    selectedStudentId,
+    mode,
+    showMessage,
+  ]);
+
+  function handleChange(event) {
+    const { name, value } = event.target;
+
     setForm((previous) => ({
       ...previous,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }));
-  };
+  }
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
+  // Reset the form for adding a new student.
+  function resetForm() {
+    setSelectedStudentId("");
+    setForm(emptyForm);
+    setMode(isAdmin ? "add" : "edit");
+    setMessage("");
+  }
 
-  setMessage(
-    "Next, we'll connect this form to the student registration API."
-  );
-};
+  // Add a new student to the existing PostgreSQL database.
+  async function addStudent() {
+    const response = await fetch(`${API}/students/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        contact: form.contact.trim(),
+        course: form.course.trim(),
+        enrollment_date: form.enrollment_date || null,
+        duration: Number(form.duration),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Unable to register student.");
+    }
+
+    const newUserId = data.user?.user_id;
+
+    if (!newUserId) {
+      throw new Error(
+        "Student was registered, but the response did not contain a user ID."
+      );
+    }
+
+    setSelectedStudentId(String(newUserId));
+    setForm((previous) => ({
+      ...previous,
+      password: "",
+    }));
+    setMode("edit");
+
+    await loadStudents();
+
+    showMessage(
+      data.message || "Student added successfully to the database."
+    );
+  }
+
+  // Update an existing student's profile.
+  async function updateStudent() {
+    const id = isAdmin
+      ? selectedStudentId
+      : String(userId ?? "");
+
+    if (!id) {
+      throw new Error("Please select a student first.");
+    }
+
+    const response = await fetch(
+      `${API}/student/profile/${encodeURIComponent(id)}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          first_name: form.first_name.trim(),
+          last_name: form.last_name.trim(),
+          email: form.email.trim(),
+          contact: form.contact.trim(),
+          course: form.course.trim(),
+          enrollment_date: form.enrollment_date || null,
+          duration: Number(form.duration),
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Unable to update profile.");
+    }
+
+    await loadStudents();
+
+    showMessage(
+      data.message || "Student profile updated successfully."
+    );
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setMessage("");
+
+    if (
+      !form.first_name.trim() ||
+      !form.email.trim() ||
+      !form.course.trim() ||
+      !String(form.duration).trim()
+    ) {
+      showMessage(
+        "Please fill in first name, email, course, and duration.",
+        "error"
+      );
+      return;
+    }
+
+    const duration = Number(form.duration);
+
+    if (!Number.isInteger(duration) || duration <= 0) {
+      showMessage(
+        "Course duration must be a positive whole number.",
+        "error"
+      );
+      return;
+    }
+
+    if (mode === "add") {
+      if (!form.password) {
+        showMessage(
+          "Please enter a password for the new student.",
+          "error"
+        );
+        return;
+      }
+
+      if (form.password.length < 8) {
+        showMessage(
+          "Password must contain at least 8 characters.",
+          "error"
+        );
+        return;
+      }
+    }
+
+    if (mode === "edit" && isAdmin && !selectedStudentId) {
+      showMessage("Please select a student to update.", "error");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      if (isAdmin && mode === "add") {
+        await addStudent();
+      } else {
+        await updateStudent();
+      }
+    } catch (error) {
+      showMessage(
+        error.message || "Unable to save student details.",
+        "error"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!user) return null;
 
@@ -149,16 +336,19 @@ export default function StudentProfile() {
             <h1 className="text-2xl font-bold">
               Student Profile Update
             </h1>
+
             <p className="mt-2 text-sm text-[#64748b]">
               {isAdmin
-                ? "View and update student profile details."
+                ? "Add students or update existing student details."
                 : "View and update your profile details."}
             </p>
           </div>
 
           <button
             type="button"
-            onClick={() => navigate(isAdmin ? "/admin" : "/student")}
+            onClick={() =>
+              navigate(isAdmin ? "/admin" : "/student")
+            }
             className="rounded-lg bg-[#0f172a] px-4 py-2 text-sm text-white hover:bg-slate-700"
           >
             ← Back to Dashboard
@@ -167,19 +357,53 @@ export default function StudentProfile() {
 
         <section className="rounded-xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
           {isAdmin && (
+            <div className="mb-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={resetForm}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+                  mode === "add"
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                + Add New Student
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("edit");
+                  setMessage("");
+                }}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+                  mode === "edit"
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                Update Existing Student
+              </button>
+            </div>
+          )}
+
+          {isAdmin && mode === "edit" && (
             <div className="mb-5">
               <label
-                htmlFor="studentSelect"
+                htmlFor="studentSelector"
                 className="mb-2 block text-sm font-semibold"
               >
                 Select Student
               </label>
 
               <select
-                id="studentSelect"
+                id="studentSelector"
                 value={selectedStudentId}
-                onChange={(e) => setSelectedStudentId(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white p-3"
+                onChange={(event) =>
+                  setSelectedStudentId(event.target.value)
+                }
+                disabled={loading || saving}
+                className="w-full rounded-lg border border-slate-300 p-3 disabled:bg-slate-100"
               >
                 <option value="">Choose a student</option>
 
@@ -193,23 +417,18 @@ export default function StudentProfile() {
                 ))}
               </select>
 
-              {loadingStudents && (
+              {!students.length && (
                 <p className="mt-2 text-sm text-slate-500">
-                  Loading students...
-                </p>
-              )}
-
-              {!loadingStudents && students.length > 0 && (
-                <p className="mt-2 text-xs text-slate-500">
-                  {students.length} student(s) loaded.
+                  No students were found. Add a student first, or check
+                  your backend and database connection.
                 </p>
               )}
             </div>
           )}
 
-          {loadingProfile && (
+          {loading && (
             <p className="mb-4 text-sm text-slate-500">
-              Loading profile...
+              Loading student profile...
             </p>
           )}
 
@@ -222,7 +441,7 @@ export default function StudentProfile() {
                 ["contact", "Phone Number"],
                 ["course", "Course / Department"],
                 ["enrollment_date", "Enrollment Date"],
-                ["duration", "Course Duration"],
+                ["duration", "Course Duration (years)"],
               ].map(([name, label]) => (
                 <div key={name}>
                   <label
@@ -240,32 +459,91 @@ export default function StudentProfile() {
                         ? "email"
                         : name === "enrollment_date"
                         ? "date"
+                        : name === "duration"
+                        ? "number"
                         : "text"
                     }
+                    min={name === "duration" ? 1 : undefined}
+                    step={name === "duration" ? 1 : undefined}
                     value={form[name]}
                     onChange={handleChange}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-3 outline-none focus:border-blue-500"
+                    required={[
+                      "first_name",
+                      "email",
+                      "course",
+                      "duration",
+                    ].includes(name)}
+                    disabled={
+                      loading ||
+                      saving ||
+                      (isAdmin && mode === "edit" && !selectedStudentId)
+                    }
+                    autoComplete={
+                      name === "email" ? "email" : "off"
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-3 outline-none focus:border-blue-500 disabled:bg-slate-100"
                     placeholder={`Enter ${label.toLowerCase()}`}
                   />
                 </div>
               ))}
+
+              {isAdmin && mode === "add" && (
+                <div className="col-span-2 max-sm:col-span-1">
+                  <label
+                    htmlFor="password"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Temporary Login Password
+                  </label>
+
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    minLength={8}
+                    value={form.password}
+                    onChange={handleChange}
+                    required
+                    autoComplete="new-password"
+                    disabled={saving}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-3 outline-none focus:border-blue-500 disabled:bg-slate-100"
+                    placeholder="At least 8 characters"
+                  />
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Your backend hashes this password before storing it.
+                  </p>
+                </div>
+              )}
             </div>
 
             <button
               type="submit"
               disabled={
-                loadingProfile ||
-                loadingStudents ||
-                !selectedStudentId
+                loading ||
+                saving ||
+                (isAdmin && mode === "edit" && !selectedStudentId)
               }
-              className="mt-6 rounded-lg bg-[#2563eb] px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="mt-6 rounded-lg bg-[#2563eb] px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Save Profile
+              {saving
+                ? "Saving..."
+                : isAdmin && mode === "add"
+                ? "Add Student to Database"
+                : "Save Profile Changes"}
             </button>
           </form>
 
           {message && (
-            <p className="mt-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+            <p
+              role="status"
+              aria-live="polite"
+              className={`mt-4 rounded-lg p-3 text-sm ${
+                messageType === "error"
+                  ? "bg-red-50 text-red-700"
+                  : "bg-green-50 text-green-800"
+              }`}
+            >
               {message}
             </p>
           )}
