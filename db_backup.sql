@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict OuxQg3UgRefXSmNtU7ZQfzDVC4HKrpeROCnau09d9WixR570hxNfvy5l4Rtb2GS
+\restrict 1F1YEcfM6HUWCVKiw343ZdZv2bBsYSESrniCGGnPqyjgtCJnQfzbaS5YOBOdGsQ
 
 -- Dumped from database version 18.6
 -- Dumped by pg_dump version 18.6
@@ -29,7 +29,7 @@ SET default_table_access_method = heap;
 
 CREATE TABLE public.admin_details (
     admin_id integer NOT NULL,
-    user_id integer NOT NULL,
+    user_id integer,
     first_name character varying(100) NOT NULL,
     last_name character varying(100),
     contact character varying(15),
@@ -238,7 +238,7 @@ COPY public.admin_details (admin_id, user_id, first_name, last_name, contact, de
 1	5	Arun	Kumar	9876543212	System Administrator	2025-01-10
 2	6	Meena	Devi	9876543213	HR Administrator	2025-03-15
 3	1	Arun	Kumar	9876543212	System Administrator	2025-01-10
-4	2	Meena	Devi	9876543213	HR Administrator	2025-03-15
+4	2	nick	brick	9876501234	worker	2025-03-15
 \.
 
 
@@ -252,6 +252,10 @@ COPY public.attendance (attendance_id, student_id, attendance_date, check_in_tim
 3	1	2026-10-28	2026-10-28 11:51:13.0396	present
 5	2	2026-10-24	2026-10-24 18:16:20.076466	present
 6	2	2026-10-25	2026-10-25 10:07:38.234881	present
+8	3	2026-10-28	2026-10-28 18:00:00.016533	absent
+10	7	2026-10-28	2026-10-28 18:00:00.016533	absent
+11	9	2026-10-28	2026-10-28 18:00:00.016533	absent
+9	4	2026-10-28	2026-10-28 18:00:00.016533	late
 \.
 
 
@@ -294,10 +298,10 @@ COPY public.public_holidays (holiday_id, holiday_name, holiday_date, description
 
 COPY public.student_details (student_id, user_id, first_name, last_name, contact, course, enrollment_date, duration) FROM stdin;
 1	3	Rahul	Kumar	9876543210	BCA	2026-06-15	3
-2	4	Priya	Sharma	9876543211	BCA	2026-06-20	3
 3	7	YourTestFirstName	YourTestLastName	9876543210	BCA	2026-10-27	3
-4	1	Rahul	Kumar	9876543210	BCA	2026-06-15	3
 5	2	Priya	Sharma	9876543211	BCA	2026-06-20	3
+2	4	Priya	Sharma	9876543211	BCA	2026-06-19	3
+4	1	Rahul	Kumar	9876543210	BCA	2026-06-13	3
 \.
 
 
@@ -306,15 +310,15 @@ COPY public.student_details (student_id, user_id, first_name, last_name, contact
 --
 
 COPY public.users (user_id, name, email, password_hash, role) FROM stdin;
-1	Alice Smith	alice@example.com	$2b$10$ExRnLeDEjQ.S4zgmy5xHj.msY4kr3.1VXNoVTv99ThyZkSrfVwRe.	student
 2	Aria	aria@example.com	$2b$10$ExRnLeDEjQ.S4zgmy5xHj.msY4kr3.1VXNoVTv99ThyZkSrfVwRe.	admin
 3	Rahul Kumar	rahul.demo@example.com	$2b$10$ExRnLeDEjQ.S4zgmy5xHj.msY4kr3.1VXNoVTv99ThyZkSrfVwRe.	student
-4	Priya Sharma	priya.demo@example.com	$2b$10$ExRnLeDEjQ.S4zgmy5xHj.msY4kr3.1VXNoVTv99ThyZkSrfVwRe.	student
 5	Arun Kumar	arun.admin.demo@example.com	$2b$10$ExRnLeDEjQ.S4zgmy5xHj.msY4kr3.1VXNoVTv99ThyZkSrfVwRe.	admin
 6	Meena Devi	meena.admin.demo@example.com	$2b$10$ExRnLeDEjQ.S4zgmy5xHj.msY4kr3.1VXNoVTv99ThyZkSrfVwRe.	admin
 7	YourTestFirstName YourTestLastName	your-test-email@example.com	$2b$12$H/p8xYvOTFVQeHbOQvjnU.IKZcJFX6FklHEBjoKEPCyj7WOW9cnDC	student
 8	Test Admin	admin@example.com	temporary_hash	admin
 9	Test Student	student@example.com	temporary_hash	student
+4	Priya Sharma	priya.demo@example.com	$2b$10$ExRnLeDEjQ.S4zgmy5xHj.msY4kr3.1VXNoVTv99ThyZkSrfVwRe.	student
+1	Rahul Kumar	alice@example.com	$2b$10$ExRnLeDEjQ.S4zgmy5xHj.msY4kr3.1VXNoVTv99ThyZkSrfVwRe.	student
 \.
 
 
@@ -329,7 +333,7 @@ SELECT pg_catalog.setval('public.admin_details_admin_id_seq', 4, true);
 -- Name: attendance_attendance_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.attendance_attendance_id_seq', 6, true);
+SELECT pg_catalog.setval('public.attendance_attendance_id_seq', 14, true);
 
 
 --
@@ -461,5 +465,5 @@ ALTER TABLE ONLY public.student_details
 -- PostgreSQL database dump complete
 --
 
-\unrestrict OuxQg3UgRefXSmNtU7ZQfzDVC4HKrpeROCnau09d9WixR570hxNfvy5l4Rtb2GS
+\unrestrict 1F1YEcfM6HUWCVKiw343ZdZv2bBsYSESrniCGGnPqyjgtCJnQfzbaS5YOBOdGsQ
 
